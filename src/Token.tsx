@@ -211,7 +211,7 @@ class Token extends Component<TokenProps, TokenState> {
 
     // return (<div className="TokenBalance my-auto">{img} {symbol}: {this.toFloat(Number(balance))}</div>)
 
-    return (<div className="TokenBalance my-auto">{img} {symbol}: {this.formatAllowance(this.state.totalTokensAtRisk)}</div>)
+    return (<div className="TokenBalance my-auto">{img} {symbol}: {this.formatAllowance(this.state.totalTokensAtRisk)} (total tokens at risk right now)</div>)
   }
 
   renderAllowanceList() {

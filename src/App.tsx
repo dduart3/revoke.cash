@@ -236,7 +236,8 @@ class App extends Component<{}, AppState> {
   renderFooter() {
     return (
       <div>
-        <p>Site created by <a href="https://kalis.me/">Rosco Kalis</a> (<a href="https://github.com/yashnaman/revoke.cash">Source</a>)</p>
+        <p>This is reverse of revoke.cash where it shows allwances given to an address</p>
+        <p>Site created by <a href="https://kalis.me/">Rosco Kalis</a> and Modified by <a href="https://twitter.com/roamingRahi">yashnaman</a>(<a href="https://github.com/yashnaman/revoke.cash">Source</a>)</p>
         <p>Learn more: <a href="https://kalis.me/unlimited-erc20-allowances/">Unlimited ERC20 allowances considered harmful</a></p>
       </div>
     )
