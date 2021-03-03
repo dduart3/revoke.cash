@@ -6,6 +6,7 @@ import ClipLoader from 'react-spinners/ClipLoader'
 import { TokenData } from './interfaces'
 import { compareBN, addressToAppName, shortenAddress, getDappListName, getExplorerUrl, lookupEnsName } from './util'
 import { Button, Form, InputGroup, OverlayTrigger, Tooltip } from 'react-bootstrap'
+import { ENGINE_METHOD_DIGESTS } from 'constants'
 
 type TokenProps = {
   provider: providers.Provider
@@ -17,23 +18,27 @@ type TokenProps = {
 }
 
 type Allowance = {
-  spender: string
-  ensSpender?: string
-  spenderAppName?: string
+  owner: string
+  ensOwner?: string
+  ownerAppName?: string
   allowance: string
   newAllowance: string
+  currentOwnerBalance: string
+  tokensAtRisk: string
 }
 
 type TokenState = {
   allowances: Allowance[]
   icon?: string
   loading: boolean
+  totalTokensAtRisk: string,
 }
 
 class Token extends Component<TokenProps, TokenState> {
   state: TokenState = {
     allowances: [],
     loading: true,
+    totalTokensAtRisk: '0',
   }
 
   componentDidMount() {
@@ -51,31 +56,39 @@ class Token extends Component<TokenProps, TokenState> {
 
     const { token } = this.props
 
-    // Filter out duplicate spenders
+    // Filter out duplicate owners
     const approvals = token.approvals
-      .filter((approval, i) => i === token.approvals.findIndex(other => approval.topics[2] === other.topics[2]))
+      .filter((approval, i) => i === token.approvals.findIndex(other => approval.topics[1] === other.topics[1]))
+
+    // console.log("approvals", approvals, token)
 
     // Retrieve current allowance for these Approval events
     let allowances: Allowance[] = (await Promise.all(approvals.map(async (ev) => {
-      const spender = getAddress(hexDataSlice(ev.topics[2], 12))
-      const allowance = (await token.contract.functions.allowance(this.props.inputAddress, spender)).toString()
+      const owner = getAddress(hexDataSlice(ev.topics[1], 12))
+      const allowance = (await token.contract.functions.allowance(owner, this.props.inputAddress)).toString()
 
       // Filter (almost) zero-value allowances early to save bandwidth
       if (this.formatAllowance(allowance) === '0.000') return undefined
 
-      // Retrieve the spender's ENS name if it exists
-      const ensSpender = await await lookupEnsName(spender, this.props.provider)
+      // Retrieve the owner's ENS name if it exists
+      const ensOwner = await await lookupEnsName(owner, this.props.provider)
 
-      // Retrieve the spender's app name if it exists
+      // Retrieve the owner's app name if it exists
       const dappListNetworkName = getDappListName(this.props.chainId)
-      const spenderAppName = await addressToAppName(spender, dappListNetworkName)
+      // const ownerAppName = await addressToAppName(owner, dappListNetworkName)
+      //in most cases it just returns an error
+      const ownerAppName = null;
 
       const newAllowance = '0'
+      const currentOwnerBalance = (await token.contract.functions.balanceOf(owner)).toString()
+      const tokensAtRisk = BigNumber.from(allowance).gte(BigNumber.from(currentOwnerBalance)) ? currentOwnerBalance : allowance
+      this.state.totalTokensAtRisk = (BigNumber.from(this.state.totalTokensAtRisk).add(BigNumber.from(tokensAtRisk))).toString()
 
-      return { spender, ensSpender, spenderAppName, allowance, newAllowance }
+
+      return { owner, ensOwner, ownerAppName, allowance, newAllowance, currentOwnerBalance, tokensAtRisk }
     })))
 
-    // Filter out zero-value allowances and sort from high to low
+    // Filter out zero-value allowances and sort from h0xF740B67dA229f2f10bcBd38A7979992fCC71B8Ebigh to low
     allowances = allowances
       .filter(allowance => allowance !== undefined)
       .sort((a, b) => -1 * compareBN(a.allowance, b.allowance))
@@ -102,27 +115,27 @@ class Token extends Component<TokenProps, TokenState> {
     // First try calling approve directly, then try increase/decreaseApproval,
     // finally try resetting allowance to 0 and then calling approve with new value
     try {
-      console.debug(`Calling contract.approve(${allowance.spender}, ${bnNew.toString()})`)
-      tx = await contract.functions.approve(allowance.spender, bnNew)
+      console.debug(`Calling contract.approve(${allowance.owner}, ${bnNew.toString()})`)
+      tx = await contract.functions.approve(allowance.owner, bnNew)
     } catch (e1) {
       console.debug(`failed, code ${e1.code}`)
       if (e1.code === -32000) {
         try {
           const sub = bnOld.sub(bnNew)
           if (sub.gte(0)) {
-            console.debug(`Calling contract.decreaseApproval(${allowance.spender}, ${sub.toString()})`)
-            tx = await contract.functions.decreaseApproval(allowance.spender, sub)
+            console.debug(`Calling contract.decreaseApproval(${allowance.owner}, ${sub.toString()})`)
+            tx = await contract.functions.decreaseApproval(allowance.owner, sub)
           } else {
-            console.debug(`Calling contract.increaseApproval(${allowance.spender}, ${sub.abs().toString()})`)
-            tx = await contract.functions.increaseApproval(allowance.spender, sub.abs())
+            console.debug(`Calling contract.increaseApproval(${allowance.owner}, ${sub.abs().toString()})`)
+            tx = await contract.functions.increaseApproval(allowance.owner, sub.abs())
           }
         } catch (e2) {
           console.debug(`failed, code ${e2.code}`)
           if (e2.code === -32000) {
-            console.debug(`Calling contract.approve(${allowance.spender}, 0)`)
-            tx = await contract.functions.approve(allowance.spender, 0)
-            console.debug(`Calling contract.approve(${allowance.spender}, ${bnNew.toString()})`)
-            tx = await contract.functions.approve(allowance.spender, bnNew)
+            console.debug(`Calling contract.approve(${allowance.owner}, 0)`)
+            tx = await contract.functions.approve(allowance.owner, 0)
+            console.debug(`Calling contract.approve(${allowance.owner}, ${bnNew.toString()})`)
+            tx = await contract.functions.approve(allowance.owner, bnNew)
           }
         }
       }
@@ -133,7 +146,7 @@ class Token extends Component<TokenProps, TokenState> {
 
       console.debug('Reloading data')
 
-      const allowances = this.state.allowances.filter(otherAllowance => otherAllowance.spender !== allowance.spender)
+      const allowances = this.state.allowances.filter(otherAllowance => otherAllowance.owner !== allowance.owner)
       this.setState({ allowances })
     }
   }
@@ -193,10 +206,12 @@ class Token extends Component<TokenProps, TokenState> {
   renderTokenBalance() {
     const { symbol, balance } = this.props.token
 
-    const backupImage = (ev) => { (ev.target as HTMLImageElement).src = 'erc20.png'}
+    const backupImage = (ev) => { (ev.target as HTMLImageElement).src = 'erc20.png' }
     const img = (<img src={this.props.token.icon} alt="" width="20px" onError={backupImage} />)
 
-    return (<div className="TokenBalance my-auto">{img} {symbol}: {this.toFloat(Number(balance))}</div>)
+    // return (<div className="TokenBalance my-auto">{img} {symbol}: {this.toFloat(Number(balance))}</div>)
+
+    return (<div className="TokenBalance my-auto">{img} {symbol}: {this.formatAllowance(this.state.totalTokensAtRisk)}</div>)
   }
 
   renderAllowanceList() {
@@ -208,39 +223,41 @@ class Token extends Component<TokenProps, TokenState> {
 
   renderAllowance(allowance: Allowance, i: number) {
     return (
-      <Form inline className="Allowance" key={allowance.spender}>
+      <Form inline className="Allowance" key={allowance.owner}>
         {this.renderAllowanceText(allowance)}
-        {this.renderRevokeButton(allowance)}
-        {this.renderUpdateInputGroup(allowance, i)}
+        {/* {this.renderRevokeButton(allowance)}
+        {this.renderUpdateInputGroup(allowance, i)} */}
       </Form>
     )
   }
 
   renderAllowanceText(allowance: Allowance) {
-    const spender = allowance.spenderAppName || allowance.ensSpender || allowance.spender
-    const shortenedSpender = allowance.spenderAppName || allowance.ensSpender || shortenAddress(allowance.spender)
+    const owner = allowance.ownerAppName || allowance.ensOwner || allowance.owner
+    const shortenedOwner = allowance.ownerAppName || allowance.ensOwner || shortenAddress(allowance.owner)
 
     const explorerBaseUrl = getExplorerUrl(this.props.chainId)
 
     const shortenedLink = explorerBaseUrl
-      ? (<a className="monospace" href={`${explorerBaseUrl}/${allowance.spender}`}>{shortenedSpender}</a>)
-      : shortenedSpender
+      ? (<a className="monospace" href={`${explorerBaseUrl}/${allowance.owner}`}>{shortenedOwner}</a>)
+      : shortenedOwner
 
     const regularLink = explorerBaseUrl
-      ? (<a className="monospace" href={`${explorerBaseUrl}/${allowance.spender}`}>{spender}</a>)
-      : spender
+      ? (<a className="monospace" href={`${explorerBaseUrl}/${allowance.owner}`}>{owner}</a>)
+      : owner
 
-    // Display separate spans for the regular and shortened versions of the spender address
+    // Display separate spans for the regular and shortened versions of the owner address
     // The correct one is selected using CSS media-queries
     return (
       <Form.Label className="AllowanceText">
         <span className="AllowanceTextSmallScreen">
-          {this.formatAllowance(allowance.allowance)} allowance to&nbsp;{shortenedLink}
+          {this.formatAllowance(allowance.allowance)} allowance from&nbsp;{shortenedLink}
         </span>
 
         <span className="AllowanceTextBigScreen">
-          {this.formatAllowance(allowance.allowance)} allowance to&nbsp;{regularLink}
+          {this.formatAllowance(allowance.allowance)} allowance from&nbsp;{regularLink}
         </span>
+
+        <span>&nbsp;current balance: {this.formatAllowance(allowance.currentOwnerBalance)}</span>
       </Form.Label>
     )
   }
@@ -274,9 +291,9 @@ class Token extends Component<TokenProps, TokenState> {
           const updatedAllowances = this.state.allowances.slice()
           updatedAllowances[i] = { ...allowance, newAllowance: event.target.value }
           this.setState({ allowances: updatedAllowances })
-        }}/>
+        }} />
       <InputGroup.Append>
-      <Button disabled={!canUpdate} className="UpdateButton" onClick={() => this.update(allowance)}>Update</Button>
+        <Button disabled={!canUpdate} className="UpdateButton" onClick={() => this.update(allowance)}>Update</Button>
       </InputGroup.Append>
     </InputGroup>)
 

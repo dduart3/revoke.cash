@@ -7,6 +7,7 @@ import { TokenData, TokenMapping } from './interfaces'
 import Token from './Token'
 import { getTokenData, getTokenIcon, getTokenMapping, isRegistered } from './util'
 import { ERC20 } from './abis'
+import { read } from 'fs'
 
 type TokenListProps = {
   provider: providers.Provider
@@ -29,6 +30,7 @@ class TokenList extends Component<TokenListProps, TokenListState> {
     filterTokens: true,
     loading: true,
   }
+  approvals = []
 
   componentDidMount() {
     this.loadData()
@@ -39,30 +41,64 @@ class TokenList extends Component<TokenListProps, TokenListState> {
     this.loadData()
   }
 
+  async readLogs(start: number, end: number) {
+    const erc20Interface = new Interface(ERC20)
+    let approvals = []
+    try {
+      approvals = await this.props.provider.getLogs({
+        fromBlock: start,
+        toBlock: end,
+        topics: [erc20Interface.getEventTopic('Approval'), undefined, hexZeroPad(this.props.inputAddress, 32)]
+      })
+      this.approvals.push(...approvals);
+      console.log("fetched event from " + start + "to " + end)
+    }
+    catch (error) {
+      // console.log(error);
+      let middle = Math.round((start + end) / 2);
+      console.log("middle", middle)
+      await this.readLogs(start, middle);
+      await this.readLogs(middle + 1, end)
+    }
+
+
+
+  }
   async loadData() {
     if (!this.props.inputAddress) return
 
     // Reset existing state after update
     this.setState({ tokens: [], loading: true })
 
-    const erc20Interface = new Interface(ERC20)
+    // const erc20Interface = new Interface(ERC20)
     const signerOrProvider = this.props.signer || this.props.provider
 
-    // Get all approvals made from the input address
-    const approvals = await this.props.provider.getLogs({
-      fromBlock: 'earliest',
-      toBlock: 'latest',
-      topics: [erc20Interface.getEventTopic('Approval'), hexZeroPad(this.props.inputAddress, 32)]
-    })
+    const latestBlockNumber = await this.props.provider.getBlockNumber();
+    // console.log(latestBlockNumber)
+    // Get all approvals made to the input address
+    // const approvals = await this.props.provider.getLogs({
+    //   fromBlock: 'earliest',
+    //   toBlock: 'latest',
+    //   topics: [erc20Interface.getEventTopic('Approval'), undefined, hexZeroPad(this.props.inputAddress, 32)]
+    // })
 
-    // Get all transfers sent to the input address
-    const transfers = await this.props.provider.getLogs({
-      fromBlock: 'earliest',
-      toBlock: 'latest',
-      topics: [erc20Interface.getEventTopic('Transfer'), undefined, hexZeroPad(this.props.inputAddress, 32)]
-    })
+    await this.readLogs(0, latestBlockNumber);
+    // const approvals = this.approvals;
+    // console.log(this.approvals)
+    const approvals = this.approvals;
+    // console.log("approvals", approvals)
 
-    const allEvents = [...approvals, ...transfers];
+    // // Get all transfers sent to the input address
+    // const transfers = await this.props.provider.getLogs({
+    //   fromBlock: 'earliest',
+    //   toBlock: 'latest',
+    //   topics: [erc20Interface.getEventTopic('Transfer'), undefined, hexZeroPad(this.props.inputAddress, 32)]
+    // })
+
+
+
+    // const allEvents = [...approvals, ...transfers];
+    const allEvents = [...approvals];
 
     // Filter unique token contract addresses and convert all events to Contract instances
     const tokenContracts = allEvents
@@ -85,6 +121,7 @@ class TokenList extends Component<TokenListProps, TokenListState> {
         const registered = await isRegistered(contract.address, this.props.provider, tokenMapping)
         const icon = await getTokenIcon(contract.address, this.props.chainId, tokenMapping)
 
+
         try {
           const tokenData = await getTokenData(contract, this.props.inputAddress, tokenMapping)
           return { ...tokenData, icon, contract, registered, approvals: tokenApprovals }
@@ -95,11 +132,13 @@ class TokenList extends Component<TokenListProps, TokenListState> {
         }
       })
     )
+    // console.log("unsortedTokens", unsortedTokens)
 
     // Filter undefined tokens and sort tokens alphabetically on token symbol
     const tokens = unsortedTokens
       .filter((token) => token !== undefined)
       .sort((a: any, b: any) => a.symbol.localeCompare(b.symbol))
+    // console.log("tokens", tokens)
 
     this.setState({ tokens, tokenMapping, loading: false })
   }

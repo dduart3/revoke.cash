@@ -41,7 +41,7 @@ class App extends Component<{}, AppState> {
       try {
         // Check if access is granted
         await this.connectSigner()
-      } catch {} // ignored
+      } catch { } // ignored
     }
 
     // Refresh the page when changing the network in Metamask
@@ -78,6 +78,7 @@ class App extends Component<{}, AppState> {
       try {
         // Use a default provider with a free Infura key if web3 is not available
         const provider = new providers.InfuraProvider('mainnet', `${'88583771d63544aa'}${'ba1006382275c6f8'}`)
+
 
         // Check that the provider is available (and not rate-limited) by sending a dummy request
         const dummyRequest = '{"method":"eth_getCode","params":["0x1f9840a85d5af5bf1d1762f925bdaddc4201f984","latest"],"id":0,"jsonrpc":"2.0"}'
@@ -176,7 +177,7 @@ class App extends Component<{}, AppState> {
         <Col className="my-auto">
           <div className="only-mobile" style={{ float: 'left' }}>{this.renderDonateButton()}</div>
         </Col>
-        <Col className="my-auto"><img className="logo" src="revoke.svg" alt="revoke.cash logo"/></Col>
+        <Col className="my-auto"><img className="logo" src="revoke.svg" alt="revoke.cash logo" /></Col>
         <Col className="my-auto">
           <div>{this.renderConnectButton()}</div>
           <div className="only-desktop" style={{ float: 'right', marginRight: '10px' }}>{this.renderDonateButton()}</div>
@@ -186,7 +187,7 @@ class App extends Component<{}, AppState> {
   }
 
   renderDonateButton() {
-    if(!this.state.chainId) return
+    if (!this.state.chainId) return
     return <DonateButton signer={this.state.signer} chainId={this.state.chainId} />
   }
 
