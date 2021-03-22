@@ -43,25 +43,24 @@ class TokenList extends Component<TokenListProps, TokenListState> {
 
   async readLogs(start: number, end: number) {
     const erc20Interface = new Interface(ERC20)
-    let approvals = []
+
     try {
-      approvals = await this.props.provider.getLogs({
+      const approvals = await this.props.provider.getLogs({
         fromBlock: start,
         toBlock: end,
         topics: [erc20Interface.getEventTopic('Approval'), undefined, hexZeroPad(this.props.inputAddress, 32)]
       })
-      this.approvals.push(...approvals);
       console.log("fetched event from " + start + "to " + end)
+      return approvals;
     }
     catch (error) {
       // console.log(error);
       let middle = Math.round((start + end) / 2);
       console.log("middle", middle)
-      await this.readLogs(start, middle);
-      await this.readLogs(middle + 1, end)
+      const startToMiddleApprovals = await this.readLogs(start, middle);
+      const middleToEndApproval = await this.readLogs(middle + 1, end);
+      return startToMiddleApprovals.concat(middleToEndApproval)
     }
-
-
 
   }
   async loadData() {
@@ -82,10 +81,10 @@ class TokenList extends Component<TokenListProps, TokenListState> {
     //   topics: [erc20Interface.getEventTopic('Approval'), undefined, hexZeroPad(this.props.inputAddress, 32)]
     // })
 
-    await this.readLogs(0, latestBlockNumber);
+    // await this.readLogs(0, latestBlockNumber);
     // const approvals = this.approvals;
     // console.log(this.approvals)
-    const approvals = this.approvals;
+    const approvals = await this.readLogs(0, latestBlockNumber);
     // console.log("approvals", approvals)
 
     // // Get all transfers sent to the input address
